@@ -13,7 +13,7 @@ queue packet_q;
 struct route_table_entry *rtable;
 int rtable_len;
 
-struct arp_entry *mtable;
+struct arp_entry * cache_arp;
 int mtable_len;
 
 int compare (const void *a, const void *b)
@@ -29,7 +29,6 @@ int compare (const void *a, const void *b)
 struct route_table_entry* get_best_route(uint32_t daddr)
 {
 	for (int i = 0; i < rtable_len; i++) {
-		//printf("%x %x %x\n", daddr, daddr & rtable[i].mask, rtable[i].prefix);
 		if ((daddr & rtable[i].mask) == rtable[i].prefix) {
 			return rtable + i;
 		} 
@@ -41,8 +40,8 @@ struct route_table_entry* get_best_route(uint32_t daddr)
 struct arp_entry* get_mac_entry(uint32_t daddr)
 {
 	for (int i = 0; i < mtable_len; i++) {
-		if (mtable[i].ip == daddr) {
-			return mtable + i;
+		if (cache_arp[i].ip == daddr) {
+			return cache_arp + i;
 		}
 	}
 
@@ -64,8 +63,7 @@ int main(int argc, char *argv[])
 
 	qsort((void *)rtable, rtable_len, sizeof(struct route_table_entry), compare);
 
-	mtable = malloc(sizeof(struct arp_entry) * 100);
-	mtable_len = parse_arp_table("arp_table.txt", mtable);
+	cache_arp = malloc(sizeof(struct arp_entry) * 100);
 
 	while (1) {
 
@@ -76,7 +74,6 @@ int main(int argc, char *argv[])
 		DIE(interface < 0, "recv_from_any_links");
 
 		struct ether_header *eth_hdr = (struct ether_header *) buf;
-		struct iphdr *ip_hdr = (struct iphdr *) (buf + sizeof(struct ether_header));
 		/* Note that packets received are in network order,
 		any header field which has more than 1 byte will need to be conerted to
 		host order. For example, ntohs(eth_hdr->ether_type). The oposite is needed when
@@ -86,6 +83,8 @@ int main(int argc, char *argv[])
 
 		if (eth_hdr->ether_type == htons(IPV4)) {
 			printf("Packet is IPv4\n");
+
+			struct iphdr *ip_hdr = (struct iphdr *) (buf + sizeof(struct ether_header));
 
 			// TODO: De facut raspunsul la pachetul pentru mine mai tarziu
 
@@ -122,15 +121,97 @@ int main(int argc, char *argv[])
 
 			get_interface_mac(interface, eth_hdr->ether_shost);
 
+			printf("len = %ld\n", len);
+
 			struct arp_entry *dmac = get_mac_entry(best_address->next_hop);
 			if (!dmac) {
-				printf("Didn't find the mac entry!\n");
+				printf("Didn't find the mac in cache!\n");
+
+				// Save the packet in queue
+
+				char *buf_copy = malloc(MAX_PACKET_LEN);
+				memcpy(buf_copy, buf, MAX_PACKET_LEN);
+				queue_enq(packet_q, (void *)buf_copy);
+
+				// Now I have to send an ARP request
+
+				char request[MAX_PACKET_LEN];
+
+				// Ethernet header
+				struct ether_header eth;
+				eth.ether_type = htons(ARP);
+				get_interface_mac(interface, eth.ether_shost);
+				for (int i = 0; i < 6; i++) {
+					eth.ether_dhost[i] = (char)(-1);
+				}
+
+				// ARP header
+				struct arp_header arp_hdr;
+				arp_hdr.htype = htons((uint16_t)1);
+				arp_hdr.ptype = htons((uint16_t)IPV4);
+				arp_hdr.hlen = 6;
+				arp_hdr.plen = 4;
+				arp_hdr.op = htons((uint16_t)1);
+				memcpy(arp_hdr.sha, eth.ether_shost, 6);
+				memcpy(&arp_hdr.spa, get_interface_ip(interface), 4);
+				memset(arp_hdr.tha, 0, 6);
+				arp_hdr.tpa = best_address->next_hop;
+
+				// Copy the headers into the request
+				memcpy(request, &eth, sizeof(struct ether_header));
+				memcpy(request + sizeof(struct ether_header), &arp_hdr, sizeof(struct arp_header));
+
+				// Send the request
+				send_to_link(best_address->interface, request, sizeof(struct ether_header) + sizeof(struct arp_header));
+
+				printf("ARP request sent\n");
+
 				continue;
 			}
 
 			memcpy(eth_hdr->ether_dhost, dmac->mac, 6);
 
 			send_to_link(best_address->interface, buf, len);
+
+			printf("Packet sent\n");
+		} else if(eth_hdr->ether_type == htons(ARP)) {
+			printf("Packet is ARP\n");
+
+			struct arp_header* arp = (struct arp_header *) (buf + sizeof(struct ether_header));
+
+			if (ntohs(arp->op) == 2) {
+				printf("ARP reply\n");
+
+				queue temp = queue_create();
+
+				cache_arp[mtable_len].ip = arp->spa;
+				memcpy(cache_arp + mtable_len++, arp->sha, 6);
+
+				while (!queue_empty(packet_q)) {
+					char *packet = (char *)queue_deq(packet_q);
+
+					struct ether_header* packet_eth = (struct ether_header*)packet;
+					struct iphdr* packet_ip = (struct iphdr*)(packet + sizeof(struct ether_header));
+
+					struct route_table_entry *best_address =  get_best_route(packet_ip->daddr);
+
+					if (arp->spa == best_address->next_hop) {
+						memcpy(packet_eth->ether_dhost, arp->tha, 6);
+
+						send_to_link(best_address->interface, packet, htons(packet_ip->tot_len) + sizeof(struct ether_header));
+
+						printf("Packet finally sent after ARP response\n");
+					} else {
+						queue_enq(temp, (void*)packet);
+					}
+				}
+
+				free(packet_q);
+				packet_q = temp;
+			} else if (ntohs(arp->op) == 1) {
+				printf("ARP request\n");
+
+			}
 		}
 
 	}
