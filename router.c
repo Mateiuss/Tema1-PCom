@@ -48,6 +48,20 @@ struct arp_entry* get_mac_entry(uint32_t daddr)
 	return NULL;
 }
 
+uint32_t string_ip_to_int(char *ip)
+{
+	uint32_t result = 0;
+	char *token = strtok(ip, ".");
+	int i = 0;
+	while (token != NULL) {
+		result += atoi(token) << (8 * (3 - i));
+		token = strtok(NULL, ".");
+		i++;
+	}
+
+	return result;
+}
+
 int main(int argc, char *argv[])
 {
 	char buf[MAX_PACKET_LEN];
@@ -121,8 +135,6 @@ int main(int argc, char *argv[])
 
 			get_interface_mac(interface, eth_hdr->ether_shost);
 
-			printf("len = %ld\n", len);
-
 			struct arp_entry *dmac = get_mac_entry(best_address->next_hop);
 			if (!dmac) {
 				printf("Didn't find the mac in cache!\n");
@@ -142,7 +154,7 @@ int main(int argc, char *argv[])
 				eth.ether_type = htons(ARP);
 				get_interface_mac(interface, eth.ether_shost);
 				for (int i = 0; i < 6; i++) {
-					eth.ether_dhost[i] = (char)(-1);
+					eth.ether_dhost[i] = (unsigned char)(-1);
 				}
 
 				// ARP header
@@ -153,7 +165,8 @@ int main(int argc, char *argv[])
 				arp_hdr.plen = 4;
 				arp_hdr.op = htons((uint16_t)1);
 				memcpy(arp_hdr.sha, eth.ether_shost, 6);
-				memcpy(&arp_hdr.spa, get_interface_ip(interface), 4);
+				uint32_t my_ip = htonl(string_ip_to_int(get_interface_ip(interface)));
+				memcpy(&arp_hdr.spa, &my_ip, 4);
 				memset(arp_hdr.tha, 0, 6);
 				arp_hdr.tpa = best_address->next_hop;
 
@@ -174,18 +187,18 @@ int main(int argc, char *argv[])
 			send_to_link(best_address->interface, buf, len);
 
 			printf("Packet sent\n");
-		} else if(eth_hdr->ether_type == htons(ARP)) {
+		} else if(eth_hdr->ether_type == htons(ARP)) {  // ARP
 			printf("Packet is ARP\n");
 
 			struct arp_header* arp = (struct arp_header *) (buf + sizeof(struct ether_header));
 
-			if (ntohs(arp->op) == 2) {
+			if (ntohs(arp->op) == 2) {  // ARP reply
 				printf("ARP reply\n");
 
 				queue temp = queue_create();
 
-				cache_arp[mtable_len].ip = arp->spa;
-				memcpy(cache_arp + mtable_len++, arp->sha, 6);
+				cache_arp[mtable_len].ip = ntohl(ntohl(arp->spa));
+				memcpy(&cache_arp[mtable_len++].mac, arp->sha, 6);
 
 				while (!queue_empty(packet_q)) {
 					char *packet = (char *)queue_deq(packet_q);
@@ -196,7 +209,7 @@ int main(int argc, char *argv[])
 					struct route_table_entry *best_address =  get_best_route(packet_ip->daddr);
 
 					if (arp->spa == best_address->next_hop) {
-						memcpy(packet_eth->ether_dhost, arp->tha, 6);
+						memcpy(packet_eth->ether_dhost, arp->sha, 6);
 
 						send_to_link(best_address->interface, packet, htons(packet_ip->tot_len) + sizeof(struct ether_header));
 
@@ -208,9 +221,39 @@ int main(int argc, char *argv[])
 
 				free(packet_q);
 				packet_q = temp;
-			} else if (ntohs(arp->op) == 1) {
+			} else if (ntohs(arp->op) == 1) { // ARP request
 				printf("ARP request\n");
 
+				char *my_ip = get_interface_ip(interface);
+
+				uint32_t my_ip_int = string_ip_to_int(my_ip);
+
+				uint32_t ip = ntohl(arp->tpa);
+
+				if (memcmp(&ip, &my_ip_int, 4) != 0) {  // Check if the request is for me
+					printf("Request not for me!\n");
+
+					continue;
+				}
+
+				printf("Request for me!\n");
+
+				uint32_t tmp_ip = arp->tpa;
+
+				arp->tpa = arp->spa;
+				memcpy(arp->tha, arp->sha, 6);
+
+				arp->spa = tmp_ip;
+				get_interface_mac(interface, arp->sha);
+
+				memcpy(eth_hdr->ether_shost, arp->sha, 6);
+				memcpy(eth_hdr->ether_dhost, arp->tha, 6);
+
+				arp->op = htons((uint16_t)2);
+
+				send_to_link(interface, buf, len);
+
+				printf("Sent the ARP reply with my info\n");
 			}
 		}
 
