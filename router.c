@@ -16,6 +16,14 @@ int rtable_len;
 struct arp_entry * cache_arp;
 int mtable_len;
 
+void print_ip4(uint32_t ip)
+{
+	for (int i = 3; i >= 0; i--) {
+		printf("%d ", (ip >> (8 * (3 - i))) & 0xFF);
+	}
+	printf("\n");
+}
+
 int compare (const void *a, const void *b)
 {
 	struct route_table_entry *c = (struct route_table_entry *)a;
@@ -40,6 +48,10 @@ struct route_table_entry* get_best_route(uint32_t daddr)
 struct arp_entry* get_mac_entry(uint32_t daddr)
 {
 	for (int i = 0; i < mtable_len; i++) {
+		printf("cache_arp[i].ip ");
+		print_ip4(cache_arp[i].ip);
+		printf("daddr ");
+		print_ip4(daddr);
 		if (cache_arp[i].ip == daddr) {
 			return cache_arp + i;
 		}
@@ -64,6 +76,8 @@ uint32_t string_ip_to_int(char *ip)
 
 int main(int argc, char *argv[])
 {
+	setvbuf(stdout, NULL, _IONBF, 0);
+
 	char buf[MAX_PACKET_LEN];
 
 	// Do not modify this line
@@ -128,8 +142,6 @@ int main(int argc, char *argv[])
 				continue;
 			}
 
-			printf("Found a next hop\n");
-
 			uint16_t new_checksum = ~(~ip_hdr->check + ~((uint16_t)(ip_hdr->ttl + 1)) + (uint16_t)ip_hdr->ttl) - 1;
 			ip_hdr->check = new_checksum;
 
@@ -142,7 +154,7 @@ int main(int argc, char *argv[])
 				// Save the packet in queue
 
 				char *buf_copy = malloc(MAX_PACKET_LEN);
-				memcpy(buf_copy, buf, MAX_PACKET_LEN);
+				memcpy(buf_copy, buf, len);
 				queue_enq(packet_q, (void *)buf_copy);
 
 				// Now I have to send an ARP request
@@ -195,9 +207,21 @@ int main(int argc, char *argv[])
 			if (ntohs(arp->op) == 2) {  // ARP reply
 				printf("ARP reply\n");
 
+				printf("The ip of the sender ");
+				print_ip4(arp->spa);
+
+				printf("The mac of the sender ");
+				for (int i = 0; i < 6; i++) {
+					printf("%02x", arp->sha[i]);
+					if (i != 5) {
+						printf(":");
+					}
+				}
+				printf("\n");
+
 				queue temp = queue_create();
 
-				cache_arp[mtable_len].ip = ntohl(ntohl(arp->spa));
+				cache_arp[mtable_len].ip = arp->spa;
 				memcpy(&cache_arp[mtable_len++].mac, arp->sha, 6);
 
 				while (!queue_empty(packet_q)) {
@@ -211,7 +235,7 @@ int main(int argc, char *argv[])
 					if (arp->spa == best_address->next_hop) {
 						memcpy(packet_eth->ether_dhost, arp->sha, 6);
 
-						send_to_link(best_address->interface, packet, htons(packet_ip->tot_len) + sizeof(struct ether_header));
+						send_to_link(best_address->interface, packet, ntohs(packet_ip->tot_len) + sizeof(struct ether_header));
 
 						printf("Packet finally sent after ARP response\n");
 					} else {
@@ -229,6 +253,13 @@ int main(int argc, char *argv[])
 				uint32_t my_ip_int = string_ip_to_int(my_ip);
 
 				uint32_t ip = ntohl(arp->tpa);
+
+				printf("My ip is ");
+				print_ip4(my_ip_int);
+
+				printf("The requested ip is ");
+				print_ip4(ip);
+
 
 				if (memcmp(&ip, &my_ip_int, 4) != 0) {  // Check if the request is for me
 					printf("Request not for me!\n");
