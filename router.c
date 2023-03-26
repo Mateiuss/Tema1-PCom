@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
 			}
 
 			// Verific checksum-ul
-			uint16_t check_checksum = checksum((uint16_t *)ip_hdr, sizeof(struct iphdr));
+			uint16_t check_checksum = checksum((uint16_t *)ip_hdr, ntohs(ip_hdr->tot_len));
 			if (check_checksum != 0) {
 				printf("Wrong checksum!\n");
 				continue;
@@ -236,8 +236,9 @@ int main(int argc, char *argv[])
 				continue;
 			}
 
-			uint16_t new_checksum = ~(~ip_hdr->check + ~((uint16_t)(ip_hdr->ttl + 1)) + (uint16_t)ip_hdr->ttl) - 1;
-			ip_hdr->check = new_checksum;
+			// Update checksum
+			ip_hdr->check = 0;
+			ip_hdr->check = htons(checksum((uint16_t *)ip_hdr, ntohs(ip_hdr->tot_len)));
 
 			get_interface_mac(interface, eth_hdr->ether_shost);
 
