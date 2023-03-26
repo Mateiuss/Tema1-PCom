@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
 				// ip_hdr->ttl = 64;
 				ip_hdr->check = 0;
 
-				ip_hdr->check = checksum((uint16_t *)ip_hdr, sizeof(struct iphdr));
+				ip_hdr->check = htons(checksum((uint16_t *)ip_hdr, sizeof(struct iphdr)));
 
 				eth_hdr->ether_type = htons(IPV4);
 				memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, 6);
@@ -178,7 +178,7 @@ int main(int argc, char *argv[])
 				ip_hdr->ttl = 64;
 				ip_hdr->check = 0;
 
-				ip_hdr->check = checksum((uint16_t *)ip_hdr, sizeof(struct iphdr));
+				ip_hdr->check = htons(checksum((uint16_t *)ip_hdr, sizeof(struct iphdr)));
 
 				eth_hdr->ether_type = htons(IPV4);
 				memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, 6);
@@ -200,6 +200,39 @@ int main(int argc, char *argv[])
 			struct route_table_entry *best_address = get_best_route(ip_hdr->daddr);
 			if (!best_address) {
 				printf("No next-hop found!\n");
+
+				char packet[MAX_PACKET_LEN];
+
+				struct icmphdr icmp_hdr;
+				icmp_hdr.type = 3;
+				icmp_hdr.code = 0;
+
+				icmp_hdr.checksum = 0;
+
+				icmp_hdr.checksum = htons(checksum((uint16_t *)&icmp_hdr, sizeof(struct icmphdr)));
+
+				ip_hdr->daddr = ip_hdr->saddr;
+				ip_hdr->saddr = htonl(my_ip_int);
+				ip_hdr->protocol = IPPROTO_ICMP;
+				ip_hdr->tot_len = htons(sizeof(struct iphdr) + sizeof(struct icmphdr));
+
+				ip_hdr->ttl = 64;
+				ip_hdr->check = 0;
+
+				ip_hdr->check = htons(checksum((uint16_t *)ip_hdr, sizeof(struct iphdr)));
+
+				eth_hdr->ether_type = htons(IPV4);
+				memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, 6);
+				get_interface_mac(interface, eth_hdr->ether_shost);
+
+				memcpy(packet, eth_hdr, sizeof(struct ether_header));
+				memcpy(packet + sizeof(struct ether_header), ip_hdr, sizeof(struct iphdr));
+				memcpy(packet + sizeof(struct ether_header) + sizeof(struct iphdr), &icmp_hdr, sizeof(struct icmphdr));
+
+				send_to_link(interface, packet, sizeof(struct ether_header) + ntohs(ip_hdr->tot_len));
+
+				printf("Sent ICMP message about the next hop not being found\n");
+
 				continue;
 			}
 
