@@ -114,7 +114,38 @@ int main(int argc, char *argv[])
 
 			struct iphdr *ip_hdr = (struct iphdr *) (buf + sizeof(struct ether_header));
 
-			// TODO: De facut raspunsul la pachetul pentru mine mai tarziu
+			// Verific daca adresa de destinatie este a mea
+			char *my_ip = get_interface_ip(interface);
+			uint32_t my_ip_int = string_ip_to_int(my_ip);
+
+			print_ip4(my_ip_int);
+			print_ip4(ip_hdr->daddr);
+
+			if (ntohl(ip_hdr->daddr) == my_ip_int) {
+				printf("Packet is for me!\n");
+				struct icmphdr *icmp_hdr = (struct icmphdr *) (buf + sizeof(struct ether_header) + sizeof(struct iphdr));
+
+				icmp_hdr->type = 0;
+				icmp_hdr->checksum = 0;
+
+				icmp_hdr->checksum = htons(checksum((uint16_t *)icmp_hdr, ntohs(ip_hdr->tot_len) - sizeof(struct iphdr)));
+
+				ip_hdr->daddr = ip_hdr->saddr;
+				ip_hdr->saddr = htonl(my_ip_int);
+
+				// ip_hdr->ttl = 64;
+				ip_hdr->check = 0;
+
+				ip_hdr->check = checksum((uint16_t *)ip_hdr, sizeof(struct iphdr));
+
+				eth_hdr->ether_type = htons(IPV4);
+				memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, 6);
+				get_interface_mac(interface, eth_hdr->ether_shost);
+
+				send_to_link(interface, buf, len);
+
+				continue;
+			}
 
 			// Verific checksum-ul
 			uint16_t check_checksum = checksum((uint16_t *)ip_hdr, sizeof(struct iphdr));
