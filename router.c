@@ -259,7 +259,7 @@ int main(int argc, char *argv[])
 				// Ethernet header
 				struct ether_header eth;
 				eth.ether_type = htons(ARP);
-				get_interface_mac(interface, eth.ether_shost);
+				get_interface_mac(best_address->interface, eth.ether_shost);
 				for (int i = 0; i < 6; i++) {
 					eth.ether_dhost[i] = (unsigned char)(-1);
 				}
@@ -272,7 +272,7 @@ int main(int argc, char *argv[])
 				arp_hdr.plen = 4;
 				arp_hdr.op = htons((uint16_t)1);
 				memcpy(arp_hdr.sha, eth.ether_shost, 6);
-				uint32_t my_ip = htonl(string_ip_to_int(get_interface_ip(interface)));
+				uint32_t my_ip = htonl(string_ip_to_int(get_interface_ip(best_address->interface)));
 				memcpy(&arp_hdr.spa, &my_ip, 4);
 				memset(arp_hdr.tha, 0, 6);
 				arp_hdr.tpa = best_address->next_hop;
