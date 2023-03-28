@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "lib.h"
+#include <arpa/inet.h>
 
 struct Trie {
     struct Trie *next[2];

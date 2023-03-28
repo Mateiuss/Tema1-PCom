@@ -1,6 +1,7 @@
 #include "queue.h"
 #include "lib.h"
 #include "protocols.h"
+#include "trie.h"
 #include <arpa/inet.h>
 #include <string.h>
 
@@ -89,7 +90,10 @@ int main(int argc, char *argv[])
 	rtable = malloc(sizeof(struct route_table_entry) * MAXSIZE_RTABLE);
 	rtable_len = read_rtable(argv[1], rtable);
 
-	qsort((void *)rtable, rtable_len, sizeof(struct route_table_entry), compare);
+	struct Trie *root = newTrie();
+	add_all_routes(root, rtable, rtable_len);
+
+	// qsort(rtable, rtable_len, sizeof(struct route_table_entry), compare);
 
 	cache_arp = malloc(sizeof(struct arp_entry) * 100);
 
@@ -119,7 +123,7 @@ int main(int argc, char *argv[])
 			uint32_t my_ip_int = string_ip_to_int(my_ip);
 
 			print_ip4(my_ip_int);
-			print_ip4(ip_hdr->daddr);
+			print_ip4(ntohl(ip_hdr->daddr));
 
 			if (ntohl(ip_hdr->daddr) == my_ip_int) {
 				printf("Packet is for me!\n");
@@ -197,7 +201,15 @@ int main(int argc, char *argv[])
 
 			(ip_hdr->ttl)--;
 
-			struct route_table_entry *best_address = get_best_route(ip_hdr->daddr);
+			struct route_table_entry *best_address = longest_prefix_match(root, ip_hdr->daddr);
+
+			if (best_address) {
+				printf("Best address: interface: %d\nnext hop: ", best_address->interface);
+				print_ip4(best_address->next_hop);
+				printf("mask: ");
+				print_ip4(best_address->mask);
+			}
+
 			if (!best_address) {
 				printf("No next-hop found!\n");
 
@@ -325,7 +337,12 @@ int main(int argc, char *argv[])
 					struct ether_header* packet_eth = (struct ether_header*)packet;
 					struct iphdr* packet_ip = (struct iphdr*)(packet + sizeof(struct ether_header));
 
-					struct route_table_entry *best_address =  get_best_route(packet_ip->daddr);
+					struct route_table_entry *best_address =  longest_prefix_match(root, packet_ip->daddr);
+
+					printf("Best address: interface: %d\nnext hop: ", best_address->interface);
+					print_ip4(best_address->next_hop);
+					printf("mask: ");
+					print_ip4(best_address->mask);
 
 					if (arp->spa == best_address->next_hop) {
 						memcpy(packet_eth->ether_dhost, arp->sha, 6);
