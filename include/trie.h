@@ -1,8 +1,5 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include "lib.h"
-#include <arpa/inet.h>
+#pragma once
+#include "headers.h"
 
 struct Trie {
     struct Trie *next[2];
