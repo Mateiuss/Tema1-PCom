@@ -13,17 +13,6 @@ void add_route(struct Trie* root, struct route_table_entry* entry) {
 
     uint32_t mask = 1;
 
-    // while (prefix) {
-    //     uint32_t bit = prefix & mask;
-
-    //     printf("%u", bit);
-
-    //     prefix >>= 1;
-    // }
-    // printf("\n");
-
-    // prefix = entry->prefix;
-
     while (prefix > 0) {
         uint32_t bit = prefix & mask;
         if (trie->next[bit] == NULL) {
@@ -38,15 +27,6 @@ void add_route(struct Trie* root, struct route_table_entry* entry) {
     } else if (ntohl(trie->entry->mask) < ntohl(entry->mask)) {
         trie->entry = entry;
     }
-}
-
-void print_trie(struct Trie* trie) {
-    if (trie == NULL) {
-        return;
-    }
-    if (trie->entry != NULL) {
-        printf("%d.%d.%d.%d\n", (trie->entry->prefix >> 24) & 0xff, (trie->entry->prefix >> 16) & 0xff, (trie->entry->prefix >> 8) & 0xff, trie->entry->prefix & 0xff);
-    }   
 }
 
 struct route_table_entry* longest_prefix_match(struct Trie* root, uint32_t ip) {
@@ -66,11 +46,6 @@ struct route_table_entry* longest_prefix_match(struct Trie* root, uint32_t ip) {
         }
         trie = trie->next[bit];
         ip >>= 1;
-    }
-    printf("final\n");
-
-    if (entry == NULL) {
-        printf("entry este null\n");
     }
 
     return entry;

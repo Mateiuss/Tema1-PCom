@@ -1,1 +1,47 @@
-Repository for the first homework of the Communication Networks class. In this homework the students will implement the dataplane of a router.
+# Tema 1 - PCom
+## DUDU Matei-Ioan 323CB
+
+### Procesul de dirijare
+
+* La fiecare pachet primit verific ethernet type-ul; in cazul acestei teme verific intre IPv4 si ARP (voi discuta mai pe larg ce fac in cazul unui pachet ARP in sectiunea dedicata acestui tip)
+
+* In cazul unui unui pachet IPv4 verific mai intai daca este destinat router-ului
+
+* Cum in cazul acestei teme un pachet destinat router-ului este de tip ICMP Request, router-ul pur si simplu emite un ICMP Reply pe baza datele deja memorate in buffer, avand grija sa modifice type-ul, ip-urile sender si destination si checksum-ul
+
+* Daca pachetul primit nu este pentru router, acesta verifica mai departe checksum-ul (daca nu e ok arunca pachetul), dupa verifica daca ttl-ul este mai mic sau egal decat 1 (caz in care pachetul este aruncat si un pachet ICMP este trimis sender-ului) si il decrementeaza. Mai departe cauta cea mai buna ruta catre ip-ul destinatie (folosind trie), iar daca nu gaseste o astfel de ruta, pachetul este aruncat si un pachet ICMP este trimis catre sender
+
+* Daca pachetul a trecut de toate aceste filtre, mai are de trecut doar prin unul: router-ul cauta in arp table daca are adresa mac a best route-ului; in cazul in care adresa mac nu se afla in arp table, router-ul trimite un ARP Request pentru a o afla (intre timp pachetul este pus in asteptare si router-ul trece la alte pachete)
+
+### Longest Prefix Match cu TRIE
+
+* Pentru a salva ruteleam creat o structura Trie de felul urmator:
+
+```c
+struct Trie {
+    struct Trie *next[2];
+    struct route_table_entry *entry;
+};
+````
+
+* Aceasta structura contine doi pointeri catre prefixele care au in reprezentarea lor binara biti de 0 sau 1
+
+* Pe langa cei doi pointeri, structura de Trie mai contine si un pointer catre intrarea aferenta din tabela de rutare (in cazul in care exista una)
+
+* Pentru a salva intrarile, algoritmul se foloseste de o masca setata la valoarea 1 cu care verifica bitul curent (pentru a decide pe care dintre cele doua ramuri sa se duca mai departe). In momentul in care prefixul devine 0, intrarea este salvata in ultima pozitie la care s-a ajuns din trie (in cazul in care era deja o intrare salvata acolo, se pastreaza intrarea cu masca mai mare)
+
+### Protocolul ARP
+
+* Router-ul verifica daca pachetul de tip ARP primit este un request sau un reply
+
+* In cazul in care este un reply, salveaza ip-ul si adresa mac a acestuia in arp table si trimite toate pachetele in asteptare care aveau nevoie de acea adresa mac
+
+* In cazul arp request-urilor, router-ul verifica daca pachetul primit este pentru el si trimite un reply cu datele sale daca raspunsul este pozitiv
+
+### Protocolul ICMP
+
+* Cand vine vorba despre protocolul ICMP, ceea ce face router-ul este foarte clar si simplu
+
+* Pentru TTL expired si host unreachable (am specificat in sectiunea dedicata procesului de dirijare cand se ajunge la acestea) un nou pachet cu datele necesare este creat si trimis catre sender-ul pachetului cu pricina
+
+* In cazul unui ICMP Echo Request, router-ul raspunde la acesta (daca a fost trimis pentru el), altfel il trimite mai departe

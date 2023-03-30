@@ -34,8 +34,6 @@ void send_ICMP_Error(int interface, uint8_t type, uint8_t code, uint32_t saddr, 
 	memcpy(packet + sizeof(struct ether_header) + sizeof(struct iphdr), &icmp_hdr, sizeof(struct icmphdr));
 
 	send_to_link(interface, packet, sizeof(struct ether_header) + ntohs(ip_hdr.tot_len));
-
-	printf("Sent ICMP message about the expiration\n");
 }
 
 void send_ICMP_Reply(int interface, char *buf, int len, int my_ip_int)
