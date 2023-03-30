@@ -65,8 +65,6 @@ int main(int argc, char *argv[])
 	struct Trie *root = newTrie();
 	add_all_routes(root, rtable, rtable_len);
 
-	// qsort(rtable, rtable_len, sizeof(struct route_table_entry), compare);
-
 	cache_arp = malloc(sizeof(struct arp_entry) * 100);
 
 	while (1) {
@@ -240,6 +238,7 @@ int main(int argc, char *argv[])
 						memcpy(packet_eth->ether_dhost, arp->sha, 6);
 
 						send_to_link(best_address->interface, packet, ntohs(packet_ip->tot_len) + sizeof(struct ether_header));
+						free(packet);
 
 						printf("Packet finally sent after ARP response\n");
 					} else {
