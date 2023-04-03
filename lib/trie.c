@@ -40,7 +40,6 @@ struct route_table_entry* longest_prefix_match(struct Trie* root, uint32_t ip) {
             entry = trie->entry;
         }
         int bit = ip & mask;
-        printf("%u", bit);
         if (trie->next[bit] == NULL) {
             break;
         }
