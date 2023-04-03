@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 			ip_hdr->check = 0;
 			ip_hdr->check = htons(checksum((uint16_t *)ip_hdr, ntohs(ip_hdr->tot_len)));
 
-			get_interface_mac(interface, eth_hdr->ether_shost);
+			get_interface_mac(best_address->interface, eth_hdr->ether_shost);
 
 			struct arp_entry *dmac = get_mac_entry(best_address->next_hop);
 			if (!dmac) {
@@ -210,5 +210,9 @@ int main(int argc, char *argv[])
 		}
 
 	}
+
+	free(cache_arp);
+	free(rtable);
+	free(root);
 }
 
